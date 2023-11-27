@@ -22,8 +22,41 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+
+    const DistrictCollection = client.db("Area").collection("District");
+    const UpazilaCollection = client.db("Area").collection("Upazila");
+    const UsersCollection = client.db('Blood-Donation').collection('users');
+
+
+    // get area 
+    app.get('/districts',async(req,res)=>{
+      const result = await DistrictCollection.find().toArray();
+      res.send(result)
+    })
+
+    app.get('/upazilas',async(req,res)=>{
+      const result = await UpazilaCollection.find().toArray();
+      res.send(result)
+    })
+
+// create user
+
+app.post('/user',async(req,res)=>{
+  const user = req.body;
+  const result = await UsersCollection.insertOne(user);
+  res.send(result)
+})
+
+// get the users
+
+app.get('/user',async(req,res)=>{
+  const result =await UsersCollection.find().toArray();
+  res.send(result)
+})
+
+
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
