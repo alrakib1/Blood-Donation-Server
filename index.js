@@ -148,10 +148,38 @@ async function run() {
       res.send(result);
     });
 
+    app.patch("/donor/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const body = req.body;
+      const updatedRequest = {
+        $set: {
+          donorName: body.donorName,
+          donorEmail: body.donorEmail,
+          donationStatus: body.donationStatus,
+        },
+      };
+      const result = await requestsCollection.updateOne(query, updatedRequest);
+      res.send(result);
+    });
+
+    app.patch("/done/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const body = req.body;
+      const updatedStatus = {
+        $set: {
+          donationStatus: body.donationStatus,
+        },
+      };
+      const result = await requestsCollection.updateOne(query, updatedStatus);
+      res.send(result);
+    });
+
+
 
 
     
-
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
