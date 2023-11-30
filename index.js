@@ -105,7 +105,9 @@ async function run() {
     app.get("/currentUserRequests", async (req, res) => {
       let query = {};
       if (req.query?.email) {
-        query = { email: req.query.email };
+        query = {
+          requesterEmail: req.query.email,
+        };
       }
       const cursor = requestsCollection.find(query);
       const result = await cursor.toArray();
@@ -114,7 +116,6 @@ async function run() {
 
     app.delete("/request/:id", async (req, res) => {
       const id = req.params.id;
-      console.log(id);
       const query = { _id: new ObjectId(id) };
       const result = await requestsCollection.deleteOne(query);
       res.send(result);
@@ -148,7 +149,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/donor/:id", async (req, res) => {
+    app.patch("/status/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const body = req.body;
@@ -176,10 +177,104 @@ async function run() {
       res.send(result);
     });
 
+    app.patch("/cancel/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const body = req.body;
+      const updatedStatus = {
+        $set: {
+          donationStatus: body.donationStatus,
+        },
+      };
+      const result = await requestsCollection.updateOne(query, updatedStatus);
+      res.send(result);
+    });
+
+    // admin related
+
+    app.get("/users/admin/:email",async (req, res) => {
+      const email = req.params.email;
+   
+      const query = { email: email };
+      const user = await UsersCollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.role === "admin";
+      }
+      res.send({ admin });
+    });
 
 
+
+    app.patch(
+      "/users/admin/:id",
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            role: "admin",
+          },
+        };
+        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
+
+
+    app.patch(
+      "/users/volunteer/:id",
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            role: "volunteer",
+          },
+        };
+        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
+
+
+
+
+    app.patch(
+      "/users/block/:id",
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            status: "blocked",
+          },
+        };
+        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
 
     
+    app.patch(
+      "/users/active/:id",
+      async (req, res) => {
+        const id = req.params.id;
+        const filter = { _id: new ObjectId(id) };
+        const updatedDoc = {
+          $set: {
+            status: "active",
+          },
+        };
+        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      }
+    );
+
+
+
+
+
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
     // Send a ping to confirm a successful connection
