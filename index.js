@@ -3,6 +3,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const port = process.env.PORT || 5000;
+const jwt = require("jsonwebtoken");
 const stripe = require("stripe")(process.env.SECRET_KEY_STRIPE);
 
 // middleware
@@ -30,8 +31,52 @@ async function run() {
       .db("Blood-Donation")
       .collection("requests");
 
-      const blogCollection = client.db('Blood-Donation').collection('blogs')
-      const donationCollection = client.db("Blood-Donation").collection("donations");
+    const blogCollection = client.db("Blood-Donation").collection("blogs");
+    const donationCollection = client
+      .db("Blood-Donation")
+      .collection("donations");
+
+    // jwt related api
+
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+
+      const token = jwt.sign(user, process.env.TOKEN, { expiresIn: "1h" });
+      // console.log(token)
+      res.send({ token });
+    });
+
+    // middlewares
+
+    const verifyToken = (req, res, next) => {
+      // console.log("inside verify token", req.headers.authorization);
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: "forbidden access" });
+      }
+      const token = req.headers.authorization.split(" ")[1];
+
+      jwt.verify(token, process.env.TOKEN, (error, decoded) => {
+        if (error) {
+          return res.status(401).send({ message: "forbidden access" });
+        }
+        req.decoded = decoded;
+
+        next();
+      });
+    };
+
+    // use verify admin after verify admin
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+      const isAdmin = user?.role === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
 
     // get area
     app.get("/districts", async (req, res) => {
@@ -61,7 +106,7 @@ async function run() {
 
     // get particular user
 
-    app.get("/profile", async (req, res) => {
+    app.get("/profile",  async (req, res) => {
       let query = {};
       if (req.query?.email) {
         query = { email: req.query.email };
@@ -71,7 +116,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/user", async (req, res) => {
+    app.patch("/user", verifyToken, async (req, res) => {
       let query = {};
       if (req.query?.email) {
         query = { email: req.query.email };
@@ -95,7 +140,7 @@ async function run() {
 
     // request donation related api
 
-    app.post("/request", async (req, res) => {
+    app.post("/request", verifyToken, async (req, res) => {
       const request = req.body;
       const result = await requestsCollection.insertOne(request);
       res.send(result);
@@ -106,7 +151,9 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/currentUserRequests", async (req, res) => {
+    //  request made by current user
+
+    app.get("/currentUserRequests", verifyToken, async (req, res) => {
       let query = {};
       if (req.query?.email) {
         query = {
@@ -118,21 +165,23 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/request/:id", async (req, res) => {
+    //  only admin can delete request
+
+    app.delete("/request/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await requestsCollection.deleteOne(query);
       res.send(result);
     });
 
-    app.get("/request/:id", async (req, res) => {
+    app.get("/request/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await requestsCollection.findOne(query);
       res.send(result);
     });
 
-    app.patch("/request/:id", async (req, res) => {
+    app.patch("/request/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const body = req.body;
@@ -153,7 +202,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/status/:id", async (req, res) => {
+    app.patch("/status/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const body = req.body;
@@ -168,7 +217,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/done/:id", async (req, res) => {
+    app.patch("/done/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const body = req.body;
@@ -181,7 +230,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/cancel/:id", async (req, res) => {
+    app.patch("/cancel/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const body = req.body;
@@ -196,8 +245,12 @@ async function run() {
 
     // admin related
 
-    app.get("/users/admin/:email",async (req, res) => {
+    app.get("/users/admin/:email", verifyToken, async (req, res) => {
       const email = req.params.email;
+      if (email !== req.decoded.email) {
+        return res.status(403).send({ message: "unauthorized access" });
+      }
+
       const query = { email: email };
       const user = await usersCollection.findOne(query);
       let admin = false;
@@ -207,10 +260,10 @@ async function run() {
       res.send({ admin });
     });
 
-
-
     app.patch(
       "/users/admin/:id",
+      verifyToken,
+      verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
@@ -224,9 +277,10 @@ async function run() {
       }
     );
 
-
     app.patch(
       "/users/volunteer/:id",
+      verifyToken,
+      verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
@@ -240,11 +294,10 @@ async function run() {
       }
     );
 
-
-
-
     app.patch(
       "/users/block/:id",
+      verifyToken,
+      verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
@@ -258,9 +311,10 @@ async function run() {
       }
     );
 
-    
     app.patch(
       "/users/active/:id",
+      verifyToken,
+      verifyAdmin,
       async (req, res) => {
         const id = req.params.id;
         const filter = { _id: new ObjectId(id) };
@@ -274,131 +328,127 @@ async function run() {
       }
     );
 
+    app.delete(
+      "/user/delete/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await usersCollection.deleteOne(query);
+        res.send(result);
+      }
+    );
 
-// blog related api
+    // blog related api
 
-app.post('/addBlog',async(req,res)=>{
-  const body = req.body;
-  const result = await blogCollection.insertOne(body);
-  res.send(result);
-})
-
-app.get('/blogs',async(req,res)=>{
-  const result = await blogCollection.find().toArray();
-  res.send(result)
-})
-
-app.patch('/blogs/:id',async(req,res)=>{
-  const id = req.params.id;
-  const query = {_id: new ObjectId(id)};
-  const updatedDoc = {
-    $set: {
-      status: 'published'
-    }
-  }
-  const result = await blogCollection.updateOne(query,updatedDoc);
-  res.send(result)
-})
-
-
-app.delete('/blogs/:id',async(req,res)=>{
-  const id = req.params.id;
-  const query = { _id: new ObjectId(id)};
-  const result = await blogCollection.deleteOne(query);
-  res.send(result);
-})
-
-app.get('/blog/:id',async(req,res)=>{
-  const id = req.params.id;
-  const query = {_id: new ObjectId(id)};
-  const result= await blogCollection.findOne(query);
-  res.send(result)
-})
-
-app.get('/search', async (req, res) => {
-  const queryParams = req.query; 
-
-  const sortOptions = {
-    bloodGroup: 1, 
-    district: 1,
-    upazila: 1,
-    email: 1,
-  };
-
-  const criteria = {
-    bloodGroup: queryParams.bloodGroup,      
-    district: queryParams.district,  
-    upazila: queryParams.upazila,    
-    email: queryParams.email,
-  };
-
-  // console.log(queryParams);
-
-  const donor = await usersCollection.find(criteria).sort(sortOptions).toArray();
-  res.send(donor);
-});
-
-
-
-app.get('/admin-stats', async(req,res)=>{
-  const users = await usersCollection.estimatedDocumentCount();
-  const requests  =await requestsCollection.estimatedDocumentCount();
-  const donationsCount = await donationCollection.estimatedDocumentCount();
-  const totalDonation = await donationCollection.find().toArray();
-
-  res.send({users, requests,donationsCount,totalDonation})
-})
-
-
-
-   //  payment intent
-
-   app.post("/create-payment-intent", async (req, res) => {
-    const { price } = req.body;
-    const amount = parseInt(price * 100);
-    console.log(amount, "amount inside intent");
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount,
-      currency: "usd",
-      payment_method_types: ["card"],
+    app.post("/addBlog", verifyToken, async (req, res) => {
+      const body = req.body;
+      const result = await blogCollection.insertOne(body);
+      res.send(result);
     });
-    res.send({
-      clientSecret: paymentIntent.client_secret,
+
+    app.get("/blogs", async (req, res) => {
+      const result = await blogCollection.find().toArray();
+      res.send(result);
     });
-  });
 
+    app.patch("/blogs/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          status: "published",
+        },
+      };
+      const result = await blogCollection.updateOne(query, updatedDoc);
+      res.send(result);
+    });
 
+    app.delete("/blogs/:id", verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await blogCollection.deleteOne(query);
+      res.send(result);
+    });
 
- // payment related api
+    app.get("/blog/:id", verifyToken, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await blogCollection.findOne(query);
+      res.send(result);
+    });
 
- app.post("/payments", async (req, res) => {
-  const payment = req.body;
-  const donationResult = await donationCollection.insertOne(payment);
+    app.get("/search", async (req, res) => {
+      const queryParams = req.query;
 
-  
-  console.log("payment info", payment);
+      const sortOptions = {
+        bloodGroup: 1,
+        district: 1,
+        upazila: 1,
+        email: 1,
+      };
 
+      const criteria = {
+        bloodGroup: queryParams.bloodGroup,
+        district: queryParams.district,
+        upazila: queryParams.upazila,
+        email: queryParams.email,
+      };
 
-  res.send({donationResult });
-});
+      // console.log(queryParams);
 
-app.get("/payments/:email", async (req, res) => {
-  const query = { email: req.params.email };
-  // if (req.params.email !== req.decoded.email) {
-  //   return res.status(403).send({ message: "forbidden access" });
-  // }
-  const result = await donationCollection.find(query).toArray();
-  res.send(result);
-});
+      const donor = await usersCollection
+        .find(criteria)
+        .sort(sortOptions)
+        .toArray();
+      res.send(donor);
+    });
 
+    app.get("/admin-stats", verifyToken, async (req, res) => {
+      const users = await usersCollection.estimatedDocumentCount();
+      const requests = await requestsCollection.estimatedDocumentCount();
+      const donationsCount = await donationCollection.estimatedDocumentCount();
+      const totalDonation = await donationCollection.find().toArray();
 
+      res.send({ users, requests, donationsCount, totalDonation });
+    });
 
+    //  payment intent
 
+    app.post("/create-payment-intent", verifyToken, async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+      console.log(amount, "amount inside intent");
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({
+        clientSecret: paymentIntent.client_secret,
+      });
+    });
 
+    // payment related api
 
+    app.post("/payments", verifyToken, async (req, res) => {
+      const payment = req.body;
+      const donationResult = await donationCollection.insertOne(payment);
 
+      console.log("payment info", payment);
 
+      res.send({ donationResult });
+    });
 
+    app.get("/payments/:email", verifyToken, async (req, res) => {
+      const query = { email: req.params.email };
+      if (req.params.email !== req.decoded.email) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      const result = await donationCollection.find(query).toArray();
+      res.send(result);
+    });
 
     // Connect the client to the server	(optional starting in v4.7)
     // await client.connect();
