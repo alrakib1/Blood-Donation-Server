@@ -3,6 +3,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const port = process.env.PORT || 5000;
+const stripe = require("stripe")(process.env.SECRET_KEY_STRIPE);
 
 // middleware
 app.use(cors());
@@ -24,10 +25,13 @@ async function run() {
   try {
     const DistrictCollection = client.db("Area").collection("District");
     const UpazilaCollection = client.db("Area").collection("Upazila");
-    const UsersCollection = client.db("Blood-Donation").collection("users");
+    const usersCollection = client.db("Blood-Donation").collection("users");
     const requestsCollection = client
       .db("Blood-Donation")
       .collection("requests");
+
+      const blogCollection = client.db('Blood-Donation').collection('blogs')
+      const donationCollection = client.db("Blood-Donation").collection("donations");
 
     // get area
     app.get("/districts", async (req, res) => {
@@ -44,14 +48,14 @@ async function run() {
 
     app.post("/user", async (req, res) => {
       const user = req.body;
-      const result = await UsersCollection.insertOne(user);
+      const result = await usersCollection.insertOne(user);
       res.send(result);
     });
 
     // get the users
 
     app.get("/user", async (req, res) => {
-      const result = await UsersCollection.find().toArray();
+      const result = await usersCollection.find().toArray();
       res.send(result);
     });
 
@@ -62,7 +66,7 @@ async function run() {
       if (req.query?.email) {
         query = { email: req.query.email };
       }
-      const cursor = UsersCollection.find(query);
+      const cursor = usersCollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -85,7 +89,7 @@ async function run() {
         },
       };
 
-      const result = await UsersCollection.updateOne(query, updatedProfile);
+      const result = await usersCollection.updateOne(query, updatedProfile);
       res.send(result);
     });
 
@@ -194,9 +198,8 @@ async function run() {
 
     app.get("/users/admin/:email",async (req, res) => {
       const email = req.params.email;
-   
       const query = { email: email };
-      const user = await UsersCollection.findOne(query);
+      const user = await usersCollection.findOne(query);
       let admin = false;
       if (user) {
         admin = user?.role === "admin";
@@ -216,7 +219,7 @@ async function run() {
             role: "admin",
           },
         };
-        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        const result = await usersCollection.updateOne(filter, updatedDoc);
         res.send(result);
       }
     );
@@ -232,7 +235,7 @@ async function run() {
             role: "volunteer",
           },
         };
-        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        const result = await usersCollection.updateOne(filter, updatedDoc);
         res.send(result);
       }
     );
@@ -250,7 +253,7 @@ async function run() {
             status: "blocked",
           },
         };
-        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        const result = await usersCollection.updateOne(filter, updatedDoc);
         res.send(result);
       }
     );
@@ -266,10 +269,132 @@ async function run() {
             status: "active",
           },
         };
-        const result = await UsersCollection.updateOne(filter, updatedDoc);
+        const result = await usersCollection.updateOne(filter, updatedDoc);
         res.send(result);
       }
     );
+
+
+// blog related api
+
+app.post('/addBlog',async(req,res)=>{
+  const body = req.body;
+  const result = await blogCollection.insertOne(body);
+  res.send(result);
+})
+
+app.get('/blogs',async(req,res)=>{
+  const result = await blogCollection.find().toArray();
+  res.send(result)
+})
+
+app.patch('/blogs/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id: new ObjectId(id)};
+  const updatedDoc = {
+    $set: {
+      status: 'published'
+    }
+  }
+  const result = await blogCollection.updateOne(query,updatedDoc);
+  res.send(result)
+})
+
+
+app.delete('/blogs/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = { _id: new ObjectId(id)};
+  const result = await blogCollection.deleteOne(query);
+  res.send(result);
+})
+
+app.get('/blog/:id',async(req,res)=>{
+  const id = req.params.id;
+  const query = {_id: new ObjectId(id)};
+  const result= await blogCollection.findOne(query);
+  res.send(result)
+})
+
+app.get('/search', async (req, res) => {
+  const queryParams = req.query; 
+
+  const sortOptions = {
+    bloodGroup: 1, 
+    district: 1,
+    upazila: 1,
+    email: 1,
+  };
+
+  const criteria = {
+    bloodGroup: queryParams.bloodGroup,      
+    district: queryParams.district,  
+    upazila: queryParams.upazila,    
+    email: queryParams.email,
+  };
+
+  // console.log(queryParams);
+
+  const donor = await usersCollection.find(criteria).sort(sortOptions).toArray();
+  res.send(donor);
+});
+
+
+
+app.get('/admin-stats', async(req,res)=>{
+  const users = await usersCollection.estimatedDocumentCount();
+  const requests  =await requestsCollection.estimatedDocumentCount();
+  const donationsCount = await donationCollection.estimatedDocumentCount();
+  const totalDonation = await donationCollection.find().toArray();
+
+  res.send({users, requests,donationsCount,totalDonation})
+})
+
+
+
+   //  payment intent
+
+   app.post("/create-payment-intent", async (req, res) => {
+    const { price } = req.body;
+    const amount = parseInt(price * 100);
+    console.log(amount, "amount inside intent");
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount,
+      currency: "usd",
+      payment_method_types: ["card"],
+    });
+    res.send({
+      clientSecret: paymentIntent.client_secret,
+    });
+  });
+
+
+
+ // payment related api
+
+ app.post("/payments", async (req, res) => {
+  const payment = req.body;
+  const donationResult = await donationCollection.insertOne(payment);
+
+  
+  console.log("payment info", payment);
+
+
+  res.send({donationResult });
+});
+
+app.get("/payments/:email", async (req, res) => {
+  const query = { email: req.params.email };
+  // if (req.params.email !== req.decoded.email) {
+  //   return res.status(403).send({ message: "forbidden access" });
+  // }
+  const result = await donationCollection.find(query).toArray();
+  res.send(result);
+});
+
+
+
+
+
 
 
 
