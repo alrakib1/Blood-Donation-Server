@@ -419,7 +419,7 @@ async function run() {
     app.post("/create-payment-intent", verifyToken, async (req, res) => {
       const { price } = req.body;
       const amount = parseInt(price * 100);
-      console.log(amount, "amount inside intent");
+      // console.log(amount, "amount inside intent");
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amount,
         currency: "usd",
@@ -436,7 +436,7 @@ async function run() {
       const payment = req.body;
       const donationResult = await donationCollection.insertOne(payment);
 
-      console.log("payment info", payment);
+      // console.log("payment info", payment);
 
       res.send({ donationResult });
     });
@@ -469,5 +469,5 @@ app.get("/", (req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+  console.log(`Blood Donation server running on port ${port}`);
 });
