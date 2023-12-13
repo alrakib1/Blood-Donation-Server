@@ -99,14 +99,14 @@ async function run() {
 
     // get the users
 
-    app.get("/user", async (req, res) => {
+    app.get("/user", verifyToken, verifyAdmin, async (req, res) => {
       const result = await usersCollection.find().toArray();
       res.send(result);
     });
 
     // get particular user
 
-    app.get("/profile",  async (req, res) => {
+    app.get("/profile", async (req, res) => {
       let query = {};
       if (req.query?.email) {
         query = { email: req.query.email };
@@ -348,16 +348,17 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/blogs",verifyToken, async (req, res) => {
+    app.get("/blogs", verifyToken, async (req, res) => {
       const result = await blogCollection.find().toArray();
       res.send(result);
     });
 
-    app.get('/showBlogs',async(req,res)=>{
-      const result = await blogCollection.find({ 'status': 'published' }).toArray();
-      res.send(result)
-
-    })
+    app.get("/showBlogs", async (req, res) => {
+      const result = await blogCollection
+        .find({ status: "published" })
+        .toArray();
+      res.send(result);
+    });
 
     app.patch("/blogs/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
@@ -392,23 +393,28 @@ async function run() {
         bloodGroup: 1,
         district: 1,
         upazila: 1,
-        email: 1,
       };
 
       const criteria = {
         bloodGroup: queryParams.bloodGroup,
         district: queryParams.district,
         upazila: queryParams.upazila,
-        email: queryParams.email,
       };
 
       // console.log(queryParams);
 
       const donor = await usersCollection
-        .find(criteria)
+        .find(criteria, { projection: { avatarImage: 0, status: 0, role: 0 } })
         .sort(sortOptions)
         .toArray();
       res.send(donor);
+    });
+
+    app.get("/searchedUser", async (req, res) => {
+      const result = await usersCollection
+        .find({}, { projection: { avatarImage: 0, status: 0, role: 0 } })
+        .toArray();
+      res.send(result);
     });
 
     app.get("/admin-stats", verifyToken, async (req, res) => {
