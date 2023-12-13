@@ -348,10 +348,16 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/blogs", async (req, res) => {
+    app.get("/blogs",verifyToken, async (req, res) => {
       const result = await blogCollection.find().toArray();
       res.send(result);
     });
+
+    app.get('/showBlogs',async(req,res)=>{
+      const result = await blogCollection.find({ 'status': 'published' }).toArray();
+      res.send(result)
+
+    })
 
     app.patch("/blogs/:id", verifyToken, verifyAdmin, async (req, res) => {
       const id = req.params.id;
